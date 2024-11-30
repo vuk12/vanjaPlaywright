@@ -1,0 +1,107 @@
+stages:
+  - test
+
+include: "/tests/tests-shared.yml"
+
+.if_stg: &if_stg '$CI_COMMIT_TAG'
+.if_dev: &if_dev '$CI_COMMIT_BRANCH'
+.if_trigger: &if_trigger '$TRIGGER_JOB == "tests"'
+
+# Disabled until refactored since it caused too much downtime
+# test:local:
+#     stage: test
+#     image: "${CI_REGISTRY_IMAGE}/next-shop-service/playwright-docker-compose:v1.35.0-jammy"
+#     services:
+#         - docker:dind
+#     script:
+#         - dockerd &
+#         - sleep 5
+#         - docker login registry.gitlab.com/1nce-tech/applications/ng-frontend/bss -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+#         - export HOME_FOLDER=$(pwd)
+#         - echo "127.0.0.1 bff-service.1nce api-mock-service.1nce next-shop-service.1nce" >> /etc/hosts
+#         - cd $HOME_FOLDER/devops/docker-compose && docker compose up -d # bff-service nginx-proxy redis api-mock-service
+#         - cd $HOME_FOLDER/tests && npm ci && npm run test:shop_local
+#         - cd $HOME_FOLDER/devops/docker-compose && docker compose down
+#     artifacts:
+#         when: on_failure
+#         paths:
+#             - tests/test-results/
+#         expire_in: 1 week
+#     allow_failure: false
+#     rules:
+#         - if: $CI_COMMIT_REF_NAME != $CI_DEFAULT_BRANCH
+#           when: always
+
+test:wait:
+  stage: test
+  extends: .test:wait
+
+test:integration:dev:
+  stage: test
+  needs: [test:wait]
+  image: "${CI_REGISTRY_IMAGE}/next-shop-service/playwright:v1.41.1-jammy"
+  script:
+    - cd tests
+    - npm ci
+    - npm run test:shop_dev_api
+  allow_failure: false
+  rules:
+    - if: *if_dev
+      when: on_success
+    - if: *if_trigger
+      when: always
+
+test:e2e:dev:
+  stage: test
+  needs: [ "test:integration:dev" ]
+  image: "${CI_REGISTRY_IMAGE}/next-shop-service/playwright:v1.41.1-jammy"
+  script:
+    - cd tests
+    - npm ci
+    - npm run test:shop_dev_e2e
+  artifacts:
+    when: on_failure
+    paths:
+      - tests/test-results/
+    expire_in: 1 week
+  rules:
+    - if: *if_dev
+    - if: *if_trigger
+      when: always
+
+test:functional:dev:
+  stage: test
+  needs: [ "test:integration:dev" ]
+  image: "${CI_REGISTRY_IMAGE}/next-shop-service/playwright:v1.41.1-jammy"
+  script:
+    - cd tests
+    - npm ci
+    - npm run test:shop_dev_functional
+  artifacts:
+    when: on_failure
+    paths:
+      - tests/test-results/
+    expire_in: 1 week
+  rules:
+    - if: *if_dev
+    - if: *if_trigger
+      when: always
+
+test:staging:stg:
+  stage: test
+  needs: [test:wait]
+  image: "${CI_REGISTRY_IMAGE}/next-shop-service/playwright:v1.41.1-jammy"
+  script:
+      - cd tests
+      - npm ci
+      - ls -l
+      - npm run test:shop_stage_e2e
+  artifacts:
+    when: on_failure
+    paths:
+      - bss/tests/test-results/
+  rules:
+    - if: *if_trigger
+      when: always
+    - if: *if_stg
+      when: on_success

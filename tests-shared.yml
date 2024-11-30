@@ -1,0 +1,73 @@
+.test:wait:
+  stage: test
+  image: 648536613203.dkr.ecr.eu-central-1.amazonaws.com/helm-kubectl:v0.2.6
+  script:
+    - if [[ $TRIGGER_JOB != "" ]]; then exit 0; fi
+    - !reference [.gitlab_auth, script]
+    - !reference [.assume_role, script]
+    - !reference [.eks_auth, script]
+    - kubectl config set-context --current --namespace=bss
+    - |
+      MAX_TRIES=50
+      SLEEP_DURATION=10
+      # Cut in case it's a tag, in case of commit nothing should happen
+      EXPECTED_IMAGE_TAG=$(echo $EXPECTED_IMAGE_TAG | cut -d"-" -f1)
+
+      # Main loop
+      for (( i=1; i<=$MAX_TRIES; i++ )); do
+          ALL_UPDATED=true
+
+          for deployment in $DEPLOYMENTS; do
+              # Check rollout status
+              if ! kubectl rollout status deployment "$deployment" --timeout=60s; then
+                  echo "Deployment $deployment has not successfully rolled out."
+                  ALL_UPDATED=false
+                  break
+              fi
+
+              # Check image
+              IMAGE=$(kubectl get deployment "$deployment" -o jsonpath="{.spec.template.spec.containers[0].image}")
+              if [[ "$IMAGE" != *"$EXPECTED_IMAGE_TAG"* ]]; then
+                  echo "Deployment $deployment does not have the expected image tag: $EXPECTED_IMAGE_TAG."
+                  ALL_UPDATED=false
+                  break
+              fi
+          done
+
+          # Check if all deployments are updated
+          if [[ "$ALL_UPDATED" == true ]]; then
+              echo "All deployments have been updated and are healthy."
+              break
+          fi
+
+          # Sleep before next try
+          sleep $SLEEP_DURATION
+      done
+
+      # Final check
+      if [[ $i -gt $MAX_TRIES ]]; then
+          echo "Not all deployments reached the desired state after $MAX_TRIES attempts."
+          exit 1
+      else
+          echo "All deployments updated and rolled out successfully."
+      fi
+  allow_failure: false
+
+.assume_role:
+  script:
+    # AWS role assume - shared services
+    - KST=$(aws sts assume-role --role-arn ${DEPLOYMENT_ROLE} --role-session-name "deployment-${CI_PROJECT_NAME}" --query '[Credentials.AccessKeyId,Credentials.SecretAccessKey,Credentials.SessionToken]' --output text )
+    # in bash substitution can be used: AWS_ACCESS_KEY_ID=${KST[1]}
+    - export AWS_ACCESS_KEY_ID=$(echo $KST | cut -d" " -f1)
+    - export AWS_SECRET_ACCESS_KEY=$(echo $KST | cut -d" " -f2)
+    - export AWS_SESSION_TOKEN=$(echo $KST | cut -d" " -f3)
+    - export AWS_SECURITY_TOKEN=$(echo $KST | cut -d" " -f3)
+
+.gitlab_auth:
+  script:
+    # Configure .netrc for HTTPS authentication to Gitlab.com repos using job's temporary token
+    - echo -e "machine gitlab.com\nlogin gitlab-ci-token\npassword ${CI_JOB_TOKEN}" >> $HOME/.netrc
+
+.eks_auth:
+  script:
+    - aws eks update-kubeconfig --region ${EKS_CLUSTER_REGION} --name ${EKS_CLUSTER_NAME}
