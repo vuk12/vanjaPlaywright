@@ -1,0 +1,37 @@
+{
+  "name": "playwright-automation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix . && prettier -w --log-level warn .",
+    "prepare": "npx playwright install",
+    "test:shop_local": "test_env=test npx playwright test --grep @local --workers=1 --project=chromium -c playwright.shop.config.ts",
+    "test:shop_dev_api": "test_env=dev npx playwright test --workers=5 --project='shop graphql tests' -c playwright.shop.config.ts",
+    "test:shop_dev_e2e": "test_env=dev npx playwright test tests-ui/e2e-tests --workers=1 --project=chromium -c playwright.shop.config.ts",
+    "test:shop_dev_functional": "test_env=dev npx playwright test tests-ui/functional-tests --workers=1 --project=chromium -c playwright.shop.config.ts",
+    "test:shop_stage_e2e": "test_env=stage npx playwright test tests-ui/e2e-tests --workers=1 --project=chromium -c playwright.shop.config.ts",
+    "allure:generate_report": "npx allure generate ./allure-results --clean",
+    "allure:open": "npx allure open ./allure-report"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.42.1",
+    "@types/node": "^20.4.2",
+    "@typescript-eslint/eslint-plugin": "^6.8.0",
+    "@typescript-eslint/parser": "^6.8.0",
+    "allure-commandline": "^2.27.0",
+    "allure-playwright": "^2.15.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.51.0",
+    "mailosaur": "^8.6.1"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.2",
+    "firefox": "^0.0.1",
+    "playwright": "^1.40.0"
+  }
+}
